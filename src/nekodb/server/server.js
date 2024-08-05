@@ -1,145 +1,110 @@
+// server.js
 import express from 'express';
-import helmet from 'helmet';
-import morgan from 'morgan';
-import rateLimit from 'express-rate-limit';
-import cors from 'cors';
-import InMemoryDatabase from '../db/database.js';
-import { register, login, authenticate } from '../handlers/auth.js';
-import jwt from 'jsonwebtoken';
+import bodyParser from 'body-parser';
+import InMemoryDatabase from '../db/database.js'; // Adjust the import path according to your project structure
 
 const app = express();
-const port = 3000;
-const SECRET_KEY = Bun.env.SECRET_KEY;
-const EXPIRATION_TIME = '1h'; // 1 hour
 
-app.use(helmet());
-app.use(cors());
-app.use(morgan('combined'));
-app.use(express.json());
+app.use(bodyParser.json());
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-});
-app.use(limiter);
+const databases = {};
 
-// Register endpoint
-app.post('/register', async (req, res) => {
-  const { username, password } = req.body;
-  try {
-    const message = await register(username, password);
-    res.status(201).send(message);
-  } catch (error) {
-    res.status(400).send(error.message);
-  }
-});
-
-// Login endpoint
-app.post('/login', async (req, res) => {
-  const { username, password } = req.body;
-  try {
-    const token = await login(username, password);
-    res.json(token);
-  } catch (error) {
-    res.status(401).send(error.message);
-  }
-});
-
-// Refresh token endpoint
-app.post('/refresh-token', authenticate, (req, res) => {
-  const { username } = req.user;
-  const newToken = jwt.sign({ username }, SECRET_KEY, { expiresIn: EXPIRATION_TIME });
-  res.json({ token: newToken, expiresIn: 3600 });
-});
-
-// Middleware to initialize database
-app.use((req, res, next) => {
-  const dbName = req.path.split('/')[1];
+const getDatabaseInstance = (req, res, next) => {
+  const dbName = req.params.dbname;
   if (!dbName) {
-    return res.status(400).send('Database name is required in the URL.');
+    return res.status(400).send({ error: 'Database name is required' });
   }
-  req.db = new InMemoryDatabase(dbName);
-  req.db.load();
+  if (!databases[dbName]) {
+    databases[dbName] = new InMemoryDatabase(dbName);
+  }
+  req.db = databases[dbName];
   next();
-});
+};
 
-// Create collection
-app.post('/:db/collections/:collection', authenticate, (req, res) => {
-  const { collection } = req.params;
+const ensureCollectionExists = async (req, res, next) => {
+  const { collectionName } = req.params;
   try {
-    req.db.createCollection(collection);
-    res.status(201).send(`Collection ${collection} created.`);
-  } catch (error) {
-    res.status(400).send(error.message);
+    await req.db.createCollection(collectionName);
+    next();
+  } catch (err) {
+    if (err.message.includes('already exists')) {
+      console.log(`Collection ${collectionName} already exists`);
+      next();
+    } else {
+      res.status(500).send({ error: err.message });
+    }
+  }
+};
+
+app.post('/:dbname/collections/:collectionName', getDatabaseInstance, async (req, res) => {
+  try {
+    await req.db.createCollection(req.params.collectionName);
+    res.status(201).send({ message: 'Collection created' });
+  } catch (err) {
+    if (err.message.includes('already exists')) {
+      console.log(`Collection ${req.params.collectionName} already exists`);
+      res.status(200).send({ message: 'Collection already exists' });
+    } else {
+      res.status(400).send({ error: err.message });
+    }
   }
 });
 
-// Insert document
-app.post('/:db/:collection', authenticate, (req, res) => {
-  const { collection } = req.params;
+app.post('/:dbname/collections/:collectionName/documents', getDatabaseInstance, ensureCollectionExists, async (req, res) => {
   try {
-    const document = req.db.insert(collection, req.body);
-    res.status(201).json(document);
-  } catch (error) {
-    res.status(400).send(error.message);
+    const document = await req.db.insert(req.params.collectionName, req.body);
+    res.status(201).send(document);
+  } catch (err) {
+    res.status(400).send({ error: err.message });
   }
 });
 
-// Find documents
-app.get('/:db/:collection', authenticate, (req, res) => {
-  const { collection } = req.params;
+app.get('/:dbname/collections/:collectionName/documents', getDatabaseInstance, ensureCollectionExists, (req, res) => {
   try {
-    const documents = req.db.find(collection, req.query);
-    res.json(documents);
-  } catch (error) {
-    res.status(400).send(error.message);
+    const documents = req.db.find(req.params.collectionName, req.query);
+    res.send(documents);
+  } catch (err) {
+    res.status(400).send({ error: err.message });
   }
 });
 
-// Find document by ID
-app.get('/:db/:collection/:id', authenticate, (req, res) => {
-  const { collection, id } = req.params;
+app.get('/:dbname/collections/:collectionName/documents/:id', getDatabaseInstance, ensureCollectionExists, (req, res) => {
   try {
-    const document = req.db.findById(collection, id);
-    res.json(document);
-  } catch (error) {
-    res.status(400).send(error.message);
+    const document = req.db.findById(req.params.collectionName, req.params.id);
+    res.send(document);
+  } catch (err) {
+    res.status(404).send({ error: err.message });
   }
 });
 
-// Update document by ID
-app.put('/:db/:collection/:id', authenticate, (req, res) => {
-  const { collection, id } = req.params;
+app.put('/:dbname/collections/:collectionName/documents', getDatabaseInstance, ensureCollectionExists, async (req, res) => {
   try {
-    const updatedDocument = req.db.updateOne(collection, { _id: id }, req.body);
-    res.json(updatedDocument);
-  } catch (error) {
-    res.status(400).send(error.message);
+    const updatedDocs = await req.db.update(req.params.collectionName, req.body.query, req.body.update);
+    res.send(updatedDocs);
+  } catch (err) {
+    res.status(400).send({ error: err.message });
   }
 });
 
-// Update documents
-app.put('/:db/:collection', authenticate, (req, res) => {
-  const { collection } = req.params;
+app.put('/:dbname/collections/:collectionName/documents/:id', getDatabaseInstance, ensureCollectionExists, async (req, res) => {
   try {
-    const updatedDocuments = req.db.update(collection, req.query, req.body);
-    res.json(updatedDocuments);
-  } catch (error) {
-    res.status(400).send(error.message);
+    const updatedDoc = await req.db.updateOne(req.params.collectionName, { _id: req.params.id }, req.body);
+    res.send(updatedDoc);
+  } catch (err) {
+    res.status(400).send({ error: err.message });
   }
 });
 
-// Delete documents
-app.delete('/:db/:collection', authenticate, (req, res) => {
-  const { collection } = req.params;
+app.delete('/:dbname/collections/:collectionName/documents', getDatabaseInstance, ensureCollectionExists, async (req, res) => {
   try {
-    const deletedCount = req.db.delete(collection, req.query);
-    res.send(`Deleted ${deletedCount} documents.`);
-  } catch (error) {
-    res.status(400).send(error.message);
+    const deletedCount = await req.db.delete(req.params.collectionName, req.body);
+    res.send({ deletedCount });
+  } catch (err) {
+    res.status(400).send({ error: err.message });
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server listening at http://localhost:${port}`);
+const PORT = 3000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
