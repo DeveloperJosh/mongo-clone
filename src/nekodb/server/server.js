@@ -11,17 +11,14 @@ const port = 3000;
 
 app.use(helmet());
 app.use(cors());
-
 app.use(morgan('combined'));
+app.use(express.json());
 
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, 
-  max: 100, 
+  windowMs: 15 * 60 * 1000,
+  max: 100,
 });
 app.use(limiter);
-
-// Body parser
-app.use(express.json());
 
 // Register endpoint
 app.post('/register', async (req, res) => {
@@ -84,6 +81,17 @@ app.get('/:db/:collection', authenticate, (req, res) => {
   try {
     const documents = req.db.find(collection, req.query);
     res.json(documents);
+  } catch (error) {
+    res.status(400).send(error.message);
+  }
+});
+
+// Find document by ID
+app.get('/:db/:collection/:id', authenticate, (req, res) => {
+  const { collection, id } = req.params;
+  try {
+    const document = req.db.findById(collection, id);
+    res.json(document);
   } catch (error) {
     res.status(400).send(error.message);
   }

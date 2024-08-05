@@ -38,6 +38,18 @@ class InMemoryDatabase {
     });
   }
 
+  findById(collectionName, id) {
+    const collection = this.collections[collectionName];
+    if (!collection) {
+      throw new Error(`Collection ${collectionName} does not exist`);
+    }
+    const document = collection.find(doc => doc._id === id);
+    if (!document) {
+      throw new Error(`Document with id ${id} does not exist`);
+    }
+    return document;
+  }
+
   update(collectionName, query, update) {
     const collection = this.collections[collectionName];
     if (!collection) {

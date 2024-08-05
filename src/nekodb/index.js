@@ -1,5 +1,5 @@
 import InMemoryDatabase from "./db/database.js";;
-import DatabaseWrapper from "./DatabaseWrapper.js";
+import NekoDB from "./DatabaseWrapper.js";
 
-export default DatabaseWrapper;
+export default NekoDB;
 export { InMemoryDatabase };

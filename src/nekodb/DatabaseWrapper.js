@@ -1,8 +1,10 @@
+// nekodb.js
 import axios from 'axios';
 
-class DatabaseWrapper {
-  constructor(baseUrl, { username, password }) {
+class NekoDB {
+  constructor(baseUrl, dbName, { username, password }) {
     this.baseUrl = baseUrl;
+    this.dbUrl = `${baseUrl}/${dbName}`;
     this.token = null;
     this.credentials = { username, password };
   }
@@ -30,9 +32,9 @@ class DatabaseWrapper {
     }
   }
 
-  async createCollection(dbName, collectionName) {
+  async createCollection(collectionName) {
     try {
-      const response = await axios.post(`${this.baseUrl}/${dbName}/collections/${collectionName}`, {}, {
+      const response = await axios.post(`${this.dbUrl}/collections/${collectionName}`, {}, {
         headers: { Authorization: `Bearer ${this.token}` }
       });
       return response.data;
@@ -45,9 +47,9 @@ class DatabaseWrapper {
     }
   }
 
-  async insert(dbName, collectionName, document) {
+  async create(collectionName, document) {
     try {
-      const response = await axios.post(`${this.baseUrl}/${dbName}/${collectionName}`, document, {
+      const response = await axios.post(`${this.dbUrl}/${collectionName}`, document, {
         headers: { Authorization: `Bearer ${this.token}` }
       });
       return response.data;
@@ -56,10 +58,10 @@ class DatabaseWrapper {
     }
   }
 
-  async find(dbName, collectionName, query = {}) {
+  async find(collectionName, query = {}) {
     try {
       const queryString = new URLSearchParams(query).toString();
-      const response = await axios.get(`${this.baseUrl}/${dbName}/${collectionName}?${queryString}`, {
+      const response = await axios.get(`${this.dbUrl}/${collectionName}?${queryString}`, {
         headers: { Authorization: `Bearer ${this.token}` }
       });
       return response.data;
@@ -68,10 +70,9 @@ class DatabaseWrapper {
     }
   }
 
-  async update(dbName, collectionName, query, update) {
+  async findById(collectionName, id) {
     try {
-      const queryString = new URLSearchParams(query).toString();
-      const response = await axios.put(`${this.baseUrl}/${dbName}/${collectionName}?${queryString}`, update, {
+      const response = await axios.get(`${this.dbUrl}/${collectionName}/${id}`, {
         headers: { Authorization: `Bearer ${this.token}` }
       });
       return response.data;
@@ -80,10 +81,22 @@ class DatabaseWrapper {
     }
   }
 
-  async delete(dbName, collectionName, query) {
+  async updateOne(collectionName, query, update) {
     try {
       const queryString = new URLSearchParams(query).toString();
-      const response = await axios.delete(`${this.baseUrl}/${dbName}/${collectionName}?${queryString}`, {
+      const response = await axios.put(`${this.dbUrl}/${collectionName}?${queryString}`, update, {
+        headers: { Authorization: `Bearer ${this.token}` }
+      });
+      return response.data;
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  async deleteOne(collectionName, query) {
+    try {
+      const queryString = new URLSearchParams(query).toString();
+      const response = await axios.delete(`${this.dbUrl}/${collectionName}?${queryString}`, {
         headers: { Authorization: `Bearer ${this.token}` }
       });
       return response.data;
@@ -103,4 +116,4 @@ class DatabaseWrapper {
   }
 }
 
-export default DatabaseWrapper;
+export default NekoDB;

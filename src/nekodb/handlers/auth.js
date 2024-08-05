@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import InMemoryDatabase from '../db/database.js';
 
-const SECRET_KEY = `${process.env.SECRET_KEY}`; 
+const SECRET_KEY = Bun.env.SECRET_KEY; 
 
 const usersDb = new InMemoryDatabase('nekodb_users');
 
