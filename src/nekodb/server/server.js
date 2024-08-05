@@ -97,6 +97,17 @@ app.get('/:db/:collection/:id', authenticate, (req, res) => {
   }
 });
 
+// Update document by ID
+app.put('/:db/:collection/:id', authenticate, (req, res) => {
+  const { collection, id } = req.params;
+  try {
+    const updatedDocument = req.db.updateOne(collection, { _id: id }, req.body);
+    res.json(updatedDocument);
+  } catch (error) {
+    res.status(400).send(error.message);
+  }
+});
+
 // Update documents
 app.put('/:db/:collection', authenticate, (req, res) => {
   const { collection } = req.params;
