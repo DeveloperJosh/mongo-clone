@@ -14,7 +14,7 @@ class InMemoryDatabase {
   async createCollection(collectionName) {
     if (this.collections[collectionName]) {
       console.log(`Collection ${collectionName} already exists`);
-      return; // No error thrown, just return
+      return;
     }
     this.collections[collectionName] = new Map();
     await this.saveCollection(collectionName);
@@ -140,7 +140,7 @@ class InMemoryDatabase {
 
   getCollection(collectionName) {
     if (!this.collections[collectionName]) {
-      this.collections[collectionName] = new Map(); // Initialize collection if it doesn't exist
+      this.collections[collectionName] = new Map();
     }
     return this.collections[collectionName];
   }
@@ -157,7 +157,7 @@ class InMemoryDatabase {
         }
         doc[key].push(value);
       }
-      delete update.$push; // Remove $push from update object to avoid saving it to the db
+      delete update.$push;
     }
     Object.assign(doc, update);
   }
