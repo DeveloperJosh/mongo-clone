@@ -36,10 +36,8 @@ async function run() {
         ]
       };
 
-      // Validate the new anime document using the schema
-      animeSchema.validate(newAnime);
-
-      await db.create('anime', newAnime);
+      // Validate and insert the new anime document using the schema
+      await db.insert('anime', newAnime);
       console.log('Neko created');
     } else {
       const update = {
@@ -58,7 +56,26 @@ async function run() {
 
       await db.updateOne('anime', { title: 'Neko' }, update);
       console.log('Neko episode added');
+
+      // Example usage of $pull
+      const pullUpdate = {
+        $pull: {
+          episodes: {
+            title: 'Neko',
+            number: 3,
+            airDate: '2021-02-03',
+            duration: '24:00',
+          }
+        }
+      };
+
+      // Validate the pull update using the schema
+      animeSchema.validateUpdate(pullUpdate);
+
+      await db.updateOne('anime', { title: 'Neko' }, pullUpdate);
+      console.log('Neko episode removed');
     }
+
   } catch (error) {
     console.error(error.message);
   }

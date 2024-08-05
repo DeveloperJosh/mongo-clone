@@ -2,7 +2,8 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import InMemoryDatabase from '../db/database.js';
 
-const SECRET_KEY = Bun.env.SECRET_KEY; 
+const SECRET_KEY = Bun.env.SECRET_KEY;
+const EXPIRATION_TIME = '1h'; // 1 hour
 
 const usersDb = new InMemoryDatabase('nekodb_users');
 
@@ -44,8 +45,8 @@ export const login = async (username, password) => {
     throw new Error('Invalid credentials.');
   }
 
-  const token = jwt.sign({ username: user.username }, SECRET_KEY, { expiresIn: '1h' });
-  return token;
+  const token = jwt.sign({ username: user.username }, SECRET_KEY, { expiresIn: EXPIRATION_TIME });
+  return { token, expiresIn: 3600 }; // Return token and expiration time in seconds
 };
 
 export const authenticate = (req, res, next) => {

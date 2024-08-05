@@ -5,9 +5,12 @@ import rateLimit from 'express-rate-limit';
 import cors from 'cors';
 import InMemoryDatabase from '../db/database.js';
 import { register, login, authenticate } from '../handlers/auth.js';
+import jwt from 'jsonwebtoken';
 
 const app = express();
 const port = 3000;
+const SECRET_KEY = Bun.env.SECRET_KEY;
+const EXPIRATION_TIME = '1h'; // 1 hour
 
 app.use(helmet());
 app.use(cors());
@@ -36,10 +39,17 @@ app.post('/login', async (req, res) => {
   const { username, password } = req.body;
   try {
     const token = await login(username, password);
-    res.json({ token });
+    res.json(token);
   } catch (error) {
     res.status(401).send(error.message);
   }
+});
+
+// Refresh token endpoint
+app.post('/refresh-token', authenticate, (req, res) => {
+  const { username } = req.user;
+  const newToken = jwt.sign({ username }, SECRET_KEY, { expiresIn: EXPIRATION_TIME });
+  res.json({ token: newToken, expiresIn: 3600 });
 });
 
 // Middleware to initialize database
