@@ -1,91 +1,105 @@
 import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'ws';
 import bodyParser from 'body-parser';
+import { createPool } from 'generic-pool';
 import InMemoryDatabase from '../db/database.js'; // Adjust the import path according to your project structure
 
 const app = express();
 app.use(bodyParser.json());
 
-const databases = {};
+// Maintain a map of pools for different databases
+const pools = {};
 
-// Utility function to get database instance
-const getDatabaseInstance = (req, res, next) => {
-  const dbName = req.params.dbname || 'default';
-  if (!databases[dbName]) {
-    databases[dbName] = new InMemoryDatabase(dbName);
-  }
-  req.db = databases[dbName];
-  next();
+const createPoolForDb = (dbName) => {
+  const factory = {
+    create: () => Promise.resolve(new InMemoryDatabase(dbName)),
+    destroy: (db) => Promise.resolve(),
+  };
+
+  return createPool(factory, {
+    max: 10, // maximum size of the pool
+    min: 2, // minimum size of the pool
+  });
 };
 
-app.post('/:dbname/collections/:collectionName', getDatabaseInstance, async (req, res) => {
-  try {
-    await req.db.createCollection(req.params.collectionName);
-    res.status(201).send({ message: 'Collection created' });
-  } catch (err) {
-    if (err.message.includes('already exists')) {
-      console.log(`Collection ${req.params.collectionName} already exists`);
-      res.status(200).send({ message: 'Collection already exists' });
-    } else {
-      res.status(400).send({ error: err.message });
+const getPool = (dbName) => {
+  if (!pools[dbName]) {
+    pools[dbName] = createPoolForDb(dbName);
+  }
+  return pools[dbName];
+};
+
+const server = createServer(app);
+const wss = new Server({ server });
+
+wss.on('connection', (ws, req) => {
+  const dbName = req.url.split('/').pop(); // Extract the database name from the URL
+  console.log(`Client connected to database: ${dbName}`);
+  const pool = getPool(dbName);
+
+  ws.on('message', async (message) => {
+    const { action, collectionName, payload } = JSON.parse(message);
+    console.log('Received message:', { action, dbName, collectionName, payload });
+    let dbInstance;
+
+    try {
+      dbInstance = await pool.acquire();
+
+      switch (action) {
+        case 'createCollection':
+          await dbInstance.createCollection(collectionName);
+          ws.send(JSON.stringify({ message: 'Collection created' }));
+          break;
+
+        case 'insert':
+          const document = await dbInstance.insert(collectionName, payload);
+          ws.send(JSON.stringify(document));
+          break;
+
+        case 'find':
+          const documents = await dbInstance.find(collectionName, payload);
+          ws.send(JSON.stringify(documents));
+          break;
+
+        case 'findById':
+          const documentById = await dbInstance.findById(collectionName, payload.id);
+          ws.send(JSON.stringify(documentById));
+          break;
+
+        case 'update':
+          const updatedDocs = await dbInstance.update(collectionName, payload.query, payload.update);
+          ws.send(JSON.stringify(updatedDocs));
+          break;
+
+        case 'updateOne':
+          const updatedDoc = await dbInstance.updateOne(collectionName, { _id: payload.id }, payload.update);
+          ws.send(JSON.stringify(updatedDoc));
+          break;
+
+        case 'delete':
+          const deletedCount = await dbInstance.delete(collectionName, payload);
+          ws.send(JSON.stringify({ deletedCount }));
+          break;
+
+        default:
+          ws.send(JSON.stringify({ error: 'Unknown action' }));
+      }
+    } catch (err) {
+      ws.send(JSON.stringify({ error: err.message }));
+    } finally {
+      if (dbInstance) {
+        await pool.release(dbInstance);
+      }
     }
-  }
-});
+  });
 
-app.post('/:dbname/collections/:collectionName/documents', getDatabaseInstance, async (req, res) => {
-  try {
-    const document = await req.db.insert(req.params.collectionName, req.body);
-    res.status(201).send(document);
-  } catch (err) {
-    res.status(400).send({ error: err.message });
-  }
-});
-
-app.get('/:dbname/collections/:collectionName/documents', getDatabaseInstance, (req, res) => {
-  try {
-    const documents = req.db.find(req.params.collectionName, req.query);
-    res.send(documents);
-  } catch (err) {
-    res.status(400).send({ error: err.message });
-  }
-});
-
-app.get('/:dbname/collections/:collectionName/documents/:id', getDatabaseInstance, (req, res) => {
-  try {
-    const document = req.db.findById(req.params.collectionName, req.params.id);
-    res.send(document);
-  } catch (err) {
-    res.status(404).send({ error: err.message });
-  }
-});
-
-app.put('/:dbname/collections/:collectionName/documents', getDatabaseInstance, async (req, res) => {
-  try {
-    const updatedDocs = await req.db.update(req.params.collectionName, req.body.query, req.body.update);
-    res.send(updatedDocs);
-  } catch (err) {
-    res.status(400).send({ error: err.message });
-  }
-});
-
-app.put('/:dbname/collections/:collectionName/documents/:id', getDatabaseInstance, async (req, res) => {
-  try {
-    const updatedDoc = await req.db.updateOne(req.params.collectionName, { _id: req.params.id }, req.body);
-    res.send(updatedDoc);
-  } catch (err) {
-    res.status(400).send({ error: err.message });
-  }
-});
-
-app.delete('/:dbname/collections/:collectionName/documents', getDatabaseInstance, async (req, res) => {
-  try {
-    const deletedCount = await req.db.delete(req.params.collectionName, req.body);
-    res.send({ deletedCount });
-  } catch (err) {
-    res.status(400).send({ error: err.message });
-  }
+  ws.on('close', () => {
+    console.log('Client disconnected');
+  });
 });
 
 const PORT = 3000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
